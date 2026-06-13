@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ZİPLA</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;700&display=swap');
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: #e8f4fd;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100dvh;
+    overflow: hidden;
+    font-family: 'Fredoka One', cursive;
+    touch-action: none;
+    user-select: none;
+  }
+
+  canvas { display: block; }
+
+  /* ---- UI BAR ---- */
+  #ui {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 18px;
+    z-index: 10; pointer-events: none;
+  }
+  .score-box { display:flex; flex-direction:column; align-items:flex-start; }
+  .score-label { font-size:10px; letter-spacing:2px; color:rgba(80,60,40,0.5); font-family:'Nunito',sans-serif; font-weight:700; }
+  .score-val { font-size:34px; color:#3a2a10; line-height:1; transition:transform 0.1s; }
+  .score-val.pop { transform:scale(1.3); }
+  .best-box { display:flex; flex-direction:column; align-items:flex-end; }
+  .best-label { font-size:10px; letter-spacing:2px; color:rgba(180,120,0,0.7); font-family:'Nunito',sans-serif; font-weight:700; }
+  .best-val { font-size:34px; color:#c47a00; line-height:1; }
+
+  /* ---- OVERLAY ---- */
+  #overlay {
+    position:fixed; inset:0;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    z-index:20; gap:14px;
+    background: rgba(255,248,230,0.92);
+    backdrop-filter: blur(6px);
+  }
+  #overlay.hidden { display:none; }
+
+  .title {
+    font-size: clamp(44px,12vw,72px);
+    color: #3a7d44;
+    text-shadow: 3px 3px 0 #b8e0bd;
+    letter-spacing: 2px;
+  }
+
+  .subtitle {
+    font-family: 'Nunito', sans-serif;
+    font-size:15px; color:#888; letter-spacing:2px;
+    font-weight:700; text-transform:uppercase;
+  }
+
+  /* ---- FRUIT PICKER ---- */
+  #fruit-pick {
+    display:flex; gap:14px; margin-top:6px;
+  }
+  .fruit-btn {
+    width:72px; height:72px;
+    border-radius:20px;
+    border: 3px solid transparent;
+    background: white;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    font-size:38px;
+    cursor:pointer;
+    transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .fruit-btn:active { transform: scale(0.9); }
+  .fruit-btn.selected {
+    border-color: #3a7d44;
+    box-shadow: 0 4px 20px rgba(58,125,68,0.35);
+    transform: scale(1.12);
+  }
+
+  .pick-label {
+    font-family:'Nunito',sans-serif; font-size:13px;
+    color:#aaa; letter-spacing:1px; font-weight:700;
+    text-transform:uppercase;
+  }
+
+  .start-btn {
+    background: #3a7d44;
+    color: white;
+    border: none; border-radius: 999px;
+    font-family:'Fredoka One', cursive;
+    font-size: 20px;
+    padding: 14px 48px;
+    cursor:pointer;
+    box-shadow: 0 6px 0 #275930;
+    transition: transform 0.1s, box-shadow 0.1s;
+    letter-spacing:1px;
+    margin-top:4px;
+  }
+  .start-btn:active { transform:translateY(4px); box-shadow:0 2px 0 #275930; }
+
+  .divider { width:50px; height:2px; background:rgba(0,0,0,0.08); border-radius:1px; }
+
+  /* dead overlay items */
+  .dead-title { font-size:clamp(30px,9vw,52px); color:#e04444; }
+  .dead-score { font-size:clamp(40px,11vw,64px); color:#3a2a10; }
+  .dead-best  { font-family:'Nunito',sans-serif; font-size:16px; color:#c47a00; font-weight:700; letter-spacing:2px; }
+  .new-best-badge {
+    background:#fffbe6; border:2px solid #f0c040;
+    border-radius:12px; padding:6px 20px;
+    font-family:'Nunito',sans-serif; font-size:13px; font-weight:700;
+    color:#b8860b; letter-spacing:2px;
+  }
+  .tap-hint {
+    font-family:'Nunito',sans-serif; font-size:13px;
+    color:#aaa; letter-spacing:3px; font-weight:700;
+    animation: blink 1.4s ease-in-out infinite;
+    text-transform:uppercase;
+  }
+  @keyframes blink { 0%,100%{opacity:0.3} 50%{opacity:1} }
+</style>
+</head>
+<body>
+
+<div id="ui">
+  <div class="score-box">
+    <div class="score-label">SKOR</div>
+    <div class="score-val" id="score-display">0</div>
+  </div>
+  <div class="best-box">
+    <div class="best-label">EN İYİ</div>
+    <div class="best-val" id="best-display">0</div>
+  </div>
+</div>
+
+<canvas id="c"></canvas>
+
+<!-- INTRO OVERLAY -->
+<div id="overlay">
+  <div class="title">🍉 ZİPLA</div>
+  <div class="pick-label">Karakterini seç</div>
+  <div id="fruit-pick">
+    <button class="fruit-btn selected" data-fruit="🍉" onclick="selectFruit(this)">🍉</button>
+    <button class="fruit-btn" data-fruit="🍊" onclick="selectFruit(this)">🍊</button>
+    <button class="fruit-btn" data-fruit="🍋" onclick="selectFruit(this)">🍋</button>
+    <button class="fruit-btn" data-fruit="🍇" onclick="selectFruit(this)">🍇</button>
+    <button class="fruit-btn" data-fruit="🍓" onclick="selectFruit(this)">🍓</button>
+  </div>
+  <div class="divider"></div>
+  <button class="start-btn" onclick="startGame()">BAŞLA!</button>
+  <div class="tap-hint">Dokunarak zıpla · 2 kez zıpla</div>
+</div>
+
+<script>
+// ===================== CANVAS SETUP =====================
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const scoreEl = document.getElementById('score-display');
+const bestEl  = document.getElementById('best-display');
+
+const BASE_W = 420, BASE_H = 620;
+let W, H, scale;
+
+function resize() {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  scale = Math.min(vw / BASE_W, vh / BASE_H);
+  W = Math.round(BASE_W * scale);
+  H = Math.round(BASE_H * scale);
+  canvas.width = W; canvas.height = H;
+  canvas.style.width = W+'px'; canvas.style.height = H+'px';
+}
+resize();
+window.addEventListener('resize', () => { resize(); if (!running) drawStatic(); });
+
+// ===================== AUDIO =====================
+let audioCtx = null;
+function getAC() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function playGluk() {
+  try {
+    const ac = getAC();
+    [0, 0.1].forEach((delay, i) => {
+      const osc  = ac.createOscillator();
+      const gain = ac.createGain();
+      const filt = ac.createBiquadFilter();
+      filt.type = 'bandpass';
+      filt.frequency.setValueAtTime(500 - i*70, ac.currentTime + delay);
+      filt.frequency.exponentialRampToValueAtTime(150, ac.currentTime + delay + 0.13);
+      filt.Q.value = 9;
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(400 - i*50, ac.currentTime + delay);
+      osc.frequency.exponentialRampToValueAtTime(110, ac.currentTime + delay + 0.13);
+      gain.gain.setValueAtTime(0, ac.currentTime + delay);
+      gain.gain.linearRampToValueAtTime(0.35, ac.currentTime + delay + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + delay + 0.14);
+      osc.connect(filt); filt.connect(gain); gain.connect(ac.destination);
+      osc.start(ac.currentTime + delay);
+      osc.stop(ac.currentTime + delay + 0.16);
+    });
+  } catch(e) {}
+}
+
+// ===================== GAME STATE =====================
+let score = 0, best = +localStorage.getItem('zipla_best2') || 0;
+let running = false, dead = false;
+let selectedEmoji = '🍉';
+
+// ===================== FRUIT PICKER =====================
+function selectFruit(btn) {
+  document.querySelectorAll('.fruit-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  selectedEmoji = btn.dataset.fruit;
+  // update title emoji
+  document.querySelector('.title').textContent = selectedEmoji + ' ZİPLA';
+}
+
+// ===================== PLAYER =====================
+const GROUND_Y = () => BASE_H - 90;
+const GRAVITY   = 0.52;
+const JUMP_F    = -12;
+
+const P = { x:80, y:0, w:36, h:36, vy:0, jumps:0, maxJumps:2, bounce:1, trail:[] };
+
+// ===================== OBSTACLES =====================
+let obs = [], obsTimer = 0, obsInterval = 110;
+
+// ===================== CLOUDS (background deco) =====================
+let clouds = [];
+function initClouds() {
+  clouds = [];
+  for (let i=0;i<6;i++) clouds.push({
+    x: Math.random()*BASE_W, y: 30+Math.random()*160,
+    w: 60+Math.random()*80, h: 28+Math.random()*20,
+    speed: 0.15+Math.random()*0.25, alpha: 0.5+Math.random()*0.4
+  });
+}
+initClouds();
+
+// ===================== FLOWERS (ground deco) =====================
+let flowers = [];
+function initFlowers() {
+  flowers = [];
+  const flowerEmojis = ['🌸','🌼','🌷','🌻','🌺'];
+  for (let i=0;i<10;i++) flowers.push({
+    x: Math.random()*BASE_W,
+    emoji: flowerEmojis[Math.floor(Math.random()*flowerEmojis.length)],
+    size: 14+Math.random()*8
+  });
+}
+initFlowers();
+
+// ===================== PARTICLES =====================
+let particles = [];
+
+// ===================== SPEED =====================
+let speed = 2.8;
+
+// ===================== RESET =====================
+function reset() {
+  P.x=80; P.y=GROUND_Y(); P.vy=0; P.jumps=0; P.trail=[];
+  obs=[]; obsTimer=0; obsInterval=110;
+  speed=2.8; score=0; particles=[];
+  updateUI();
+}
+
+// ===================== JUMP =====================
+function jump() {
+  if (dead) { revive(); return; }
+  if (!running) return;
+  if (P.jumps < P.maxJumps) {
+    P.vy = JUMP_F;
+    P.jumps++;
+    playGluk();
+    spawnJumpParticles();
+  }
+}
+
+// ===================== START / REVIVE =====================
+function startGame() {
+  reset();
+  running = true; dead = false;
+  overlay.classList.add('hidden');
+  loop();
+}
+
+function revive() {
+  // show intro again for fruit pick
+  dead = false;
+  overlay.classList.remove('hidden');
+  overlay.innerHTML = `
+    <div class="title">${selectedEmoji} ZİPLA</div>
+    <div class="pick-label">Karakterini seç</div>
+    <div id="fruit-pick">
+      <button class="fruit-btn${selectedEmoji==='🍉'?' selected':''}" data-fruit="🍉" onclick="selectFruit(this)">🍉</button>
+      <button class="fruit-btn${selectedEmoji==='🍊'?' selected':''}" data-fruit="🍊" onclick="selectFruit(this)">🍊</button>
+      <button class="fruit-btn${selectedEmoji==='🍋'?' selected':''}" data-fruit="🍋" onclick="selectFruit(this)">🍋</button>
+      <button class="fruit-btn${selectedEmoji==='🍇'?' selected':''}" data-fruit="🍇" onclick="selectFruit(this)">🍇</button>
+      <button class="fruit-btn${selectedEmoji==='🍓'?' selected':''}" data-fruit="🍓" onclick="selectFruit(this)">🍓</button>
+    </div>
+    <div class="divider"></div>
+    <div class="dead-title">Oyun Bitti!</div>
+    <div class="dead-score">${score}</div>
+    <div class="dead-best">EN İYİ: ${best}</div>
+    ${score===best&&score>0 ? '<div class="new-best-badge">🏆 YENİ REKOR!</div>' : ''}
+    <button class="start-btn" onclick="startGame()">TEKRAR!</button>
+  `;
+}
+
+// ===================== DIE =====================
+function die() {
+  running = false; dead = true;
+  if (score > best) { best = score; localStorage.setItem('zipla_best2', best); }
+  bestEl.textContent = best;
+  spawnDeathParticles();
+  setTimeout(revive, 900);
+}
+
+// ===================== MAIN LOOP =====================
+function loop() {
+  if (!running) return;
+  update();
+  render();
+  requestAnimationFrame(loop);
+}
+
+function update() {
+  // gravity + move
+  P.vy += GRAVITY;
+  P.y  += P.vy;
+  if (P.y >= GROUND_Y()) { P.y=GROUND_Y(); P.vy=0; P.jumps=0; }
+
+  // trail
+  P.trail.unshift({x:P.x+P.w/2, y:P.y+P.h/2});
+  if (P.trail.length>8) P.trail.pop();
+
+  // obstacles
+  obsTimer++;
+  if (obsTimer >= obsInterval) {
+    obsTimer=0;
+    // very slowly tighten interval — floor at 65
+    obsInterval = Math.max(65, obsInterval - 0.4);
+    spawnObs();
+  }
+  obs.forEach(o => o.x -= speed);
+  obs = obs.filter(o => o.x+o.w > -30);
+
+  // speed: starts at 2.8, gains 1 every ~1500 frames (≈25 seconds)
+  speed = 2.8 + score * 0.00065;
+
+  // score
+  score++;
+  if (score % 10 === 0) updateUI();
+
+  // collision (generous hitbox)
+  for (const o of obs) {
+    if (P.x+6 < o.x+o.w-4 && P.x+P.w-6 > o.x+4 &&
+        P.y+6 < o.y+o.h-4 && P.y+P.h-6 > o.y+4) { die(); return; }
+  }
+
+  // particles
+  particles.forEach(p => { p.x+=p.vx; p.y+=p.vy; p.vy+=0.18; p.life--; p.alpha=p.life/p.maxLife; });
+  particles = particles.filter(p=>p.life>0);
+
+  // clouds scroll
+  clouds.forEach(c => { c.x -= c.speed; if (c.x+c.w < 0) c.x = BASE_W+10; });
+
+  // flowers scroll (same speed as ground)
+  flowers.forEach(f => { f.x -= speed; if (f.x < -20) f.x = BASE_W+20; });
+}
+
+// ===================== RENDER =====================
+function render() {
+  ctx.clearRect(0,0,W,H);
+  ctx.save(); ctx.scale(scale,scale);
+  drawSky();
+  drawClouds();
+  drawGround();
+  drawFlowers();
+  drawObs();
+  drawTrail();
+  drawPlayer();
+  drawParticles();
+  ctx.restore();
+}
+
+function drawStatic() {
+  ctx.clearRect(0,0,W,H);
+  ctx.save(); ctx.scale(scale,scale);
+  drawSky(); drawClouds(); drawGround(); drawFlowers();
+  drawPlayerAt(80, GROUND_Y());
+  ctx.restore();
+}
+
+// ===================== DRAW FUNCTIONS =====================
+function drawSky() {
+  // soft blue-to-light sky gradient
+  const g = ctx.createLinearGradient(0,0,0,BASE_H);
+  g.addColorStop(0,   '#c9e8f5');
+  g.addColorStop(0.55,'#dff0f8');
+  g.addColorStop(1,   '#f0f8e8');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,BASE_W,BASE_H);
+
+  // distant hills (soft)
+  ctx.fillStyle = 'rgba(160,210,170,0.35)';
+  ctx.beginPath();
+  ctx.ellipse(80,  GROUND_Y()-10, 130, 60, 0, Math.PI, 0);
+  ctx.ellipse(280, GROUND_Y()-20, 160, 75, 0, Math.PI, 0);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(130,200,145,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(360, GROUND_Y()-5, 100, 50, 0, Math.PI, 0);
+  ctx.fill();
+}
+
+function drawClouds() {
+  clouds.forEach(c => {
+    ctx.save();
+    ctx.globalAlpha = c.alpha;
+    ctx.fillStyle = 'white';
+    // puffy cloud shape
+    const r = c.h / 2;
+    ctx.beginPath();
+    ctx.arc(c.x + r,         c.y,     r,     Math.PI, 0);
+    ctx.arc(c.x + c.w*0.5,   c.y-r*0.4, r*0.75, Math.PI, 0);
+    ctx.arc(c.x + c.w - r,   c.y,     r*0.9, Math.PI, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+function drawGround() {
+  const gy = GROUND_Y() + P.h;
+  // grass strip
+  const gg = ctx.createLinearGradient(0, gy-12, 0, BASE_H);
+  gg.addColorStop(0,   '#6abf5e');
+  gg.addColorStop(0.08,'#5aaa50');
+  gg.addColorStop(1,   '#3d7a38');
+  ctx.fillStyle = gg;
+  ctx.fillRect(0, gy-12, BASE_W, BASE_H - gy + 12);
+
+  // bright top edge
+  ctx.fillStyle = '#82d175';
+  ctx.fillRect(0, gy-14, BASE_W, 6);
+
+  // dirt under
+  ctx.fillStyle = '#a87850';
+  ctx.fillRect(0, gy+4, BASE_W, BASE_H - gy - 4);
+}
+
+function drawFlowers() {
+  const gy = GROUND_Y() + P.h - 10;
+  flowers.forEach(f => {
+    ctx.font = `${f.size}px serif`;
+    ctx.textAlign='center'; ctx.textBaseline='bottom';
+    ctx.fillText(f.emoji, f.x, gy);
+  });
+}
+
+function drawObs() {
+  obs.forEach(o => {
+    // cactus-style obstacle: dark green rounded rect with spikes
+    ctx.fillStyle = '#3d8f3d';
+    ctx.shadowColor = 'rgba(0,80,0,0.3)';
+    ctx.shadowBlur = 8;
+    roundRect(ctx, o.x, o.y, o.w, o.h, 6);
+    ctx.fill();
+    // lighter stripe
+    ctx.fillStyle = '#55b055';
+    ctx.shadowBlur = 0;
+    roundRect(ctx, o.x+o.w*0.3, o.y+4, o.w*0.15, o.h-8, 3);
+    ctx.fill();
+    // top bump
+    ctx.fillStyle = '#3d8f3d';
+    ctx.beginPath();
+    ctx.arc(o.x+o.w/2, o.y, o.w*0.35, Math.PI, 0);
+    ctx.fill();
+  });
+  ctx.shadowBlur = 0;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y); ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r); ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h); ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r); ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+
+function drawTrail() {
+  P.trail.forEach((t,i) => {
+    const alpha = (1 - i/P.trail.length) * 0.25;
+    const size  = (1 - i/P.trail.length) * (P.w*0.4);
+    ctx.globalAlpha = alpha;
+    ctx.font = `${size*2}px serif`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(selectedEmoji, t.x - i*2, t.y);
+  });
+  ctx.globalAlpha = 1;
+}
+
+function drawPlayer() { drawPlayerAt(P.x, P.y); }
+function drawPlayerAt(x, y) {
+  const cx = x + P.w/2, cy = y + P.h/2;
+  // shadow on ground
+  const gy = GROUND_Y() + P.h;
+  const dist = gy - cy;
+  const shadowAlpha = Math.max(0, 0.25 - dist*0.0012);
+  const shadowScale = Math.max(0.3, 1 - dist*0.004);
+  ctx.save();
+  ctx.globalAlpha = shadowAlpha;
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(cx, gy-2, P.w*0.4*shadowScale, 5*shadowScale, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+
+  // slight bounce squish
+  const squish = P.vy > 2 ? 0.85 : (P.vy < -4 ? 1.15 : 1);
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(1/squish, squish);
+  ctx.font = `${P.w * 1.5}px serif`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(selectedEmoji, 0, 0);
+  ctx.restore();
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    ctx.globalAlpha = Math.max(0, p.alpha);
+    ctx.font = `${p.size}px serif`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(p.emoji, p.x, p.y);
+  });
+  ctx.globalAlpha = 1;
+}
+
+// ===================== SPAWN =====================
+function spawnObs() {
+  const h = 28 + Math.random()*44;
+  const w = 22 + Math.random()*14;
+  const gy = GROUND_Y() + P.h;
+  obs.push({ x:BASE_W+10, y:gy-h, w, h });
+}
+
+const SPARKLES = ['✨','⭐','💫','🌟'];
+function spawnJumpParticles() {
+  const cx = P.x+P.w/2, cy = P.y+P.h;
+  for (let i=0;i<5;i++) {
+    const angle = Math.PI + (Math.random()-0.5)*Math.PI*0.7;
+    const spd = 1.5 + Math.random()*2.5;
+    particles.push({
+      x:cx, y:cy,
+      vx:Math.cos(angle)*spd, vy:Math.sin(angle)*spd,
+      size: 12+Math.random()*8,
+      emoji: SPARKLES[Math.floor(Math.random()*SPARKLES.length)],
+      life:18+Math.random()*12, maxLife:30, alpha:1
+    });
+  }
+}
+
+function spawnDeathParticles() {
+  const cx = P.x+P.w/2, cy = P.y+P.h/2;
+  for (let i=0;i<12;i++) {
+    const angle = Math.random()*Math.PI*2;
+    const spd = 2+Math.random()*4;
+    particles.push({
+      x:cx, y:cy,
+      vx:Math.cos(angle)*spd, vy:Math.sin(angle)*spd-2,
+      size:18+Math.random()*10,
+      emoji: selectedEmoji,
+      life:35+Math.random()*25, maxLife:60, alpha:1
+    });
+  }
+  // keep rendering particles after death
+  function deathLoop() {
+    ctx.clearRect(0,0,W,H);
+    ctx.save(); ctx.scale(scale,scale);
+    drawSky(); drawClouds(); drawGround(); drawFlowers();
+    particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.18;p.life--;p.alpha=p.life/p.maxLife;});
+    particles=particles.filter(p=>p.life>0);
+    drawParticles();
+    ctx.restore();
+    if(particles.length>0) requestAnimationFrame(deathLoop);
+  }
+  requestAnimationFrame(deathLoop);
+}
+
+// ===================== UI =====================
+function updateUI() {
+  scoreEl.textContent = score;
+  bestEl.textContent  = best;
+  scoreEl.classList.remove('pop');
+  void scoreEl.offsetWidth;
+  scoreEl.classList.add('pop');
+}
+
+// ===================== INPUT =====================
+document.addEventListener('keydown', e => {
+  if (e.code==='Space'||e.code==='ArrowUp') { e.preventDefault(); jump(); }
+});
+document.addEventListener('touchstart', e => {
+  // don't hijack overlay button taps
+  if (e.target.closest('#overlay')) return;
+  e.preventDefault(); jump();
+}, {passive:false});
+document.addEventListener('mousedown', e => {
+  if (e.target.closest('#overlay')) return;
+  jump();
+});
+
+// ===================== INIT =====================
+reset();
+drawStatic();
+bestEl.textContent = best;
+</script>
+</body>
+</html>
