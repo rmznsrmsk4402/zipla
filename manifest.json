@@ -9,9 +9,10 @@
   "theme_color": "#3a7d44",
   "icons": [
     {
-      "src": "icon.png",
+      "src": "https://rmznsrmsk4402.github.io/zipla/icon.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
